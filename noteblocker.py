@@ -130,6 +130,78 @@ class MidiTranslationManager:
         "119": "snare"
     }
 
+    channel10 = {
+        "27": "basedrum",
+        "28": "snare",
+        "29": "hat",
+        "30": "snare",
+        "31": "hat",
+        "32": "hat",
+        "33": "hat",
+        "34": "bell",
+        "35": "basedrum",
+        "36": "hat",
+        "37": "hat",
+        "38": "snare",
+        "39": "hat",
+        "40": "snare",
+        "41": "basedrum",
+        "42": "hat",
+        "43": "basedrum",
+        "44": "snare",
+        "45": "basedrum",
+        "46": "hat",
+        "47": "basedrum",
+        "48": "basedrum",
+        "49": "snare",
+        "50": "snare",
+        "51": "snare",
+        "52": "hat",
+        "53": "bell",
+        "54": "snare",
+        "55": "snare",
+        "56": "bell",
+        "57": "snare",
+        "58": "snare",
+        "59": "snare",
+        "60": "snare",
+        "61": "snare",
+        "62": "snare",
+        "63": "snare",
+        "64": "snare",
+        "65": "hat",
+        "66": "hat",
+        "67": "hat",
+        "67": "hat",
+        "68": "hat",
+        "69": "hat",
+        "70": "hat",
+        "71": "bell",
+        "72": "bell",
+        "73": "hat",
+        "74": "basedrum",
+        "75": "hat",
+        "76": "hat",
+        "77": "hat",
+        "78": "snare",
+        "79": "snare",
+        "80": "bell",
+        "81": "bell",
+        "82": "hat",
+        "83": "snare",
+        "84": "chime",
+        "85": "hat",
+        "86": "basedrum",
+        "87": "basedrum"
+    }
+
+    def get_percussion(instrument):
+        instrument = str(instrument)
+        for x in MidiTranslationManager.channel10:
+            if x == instrument or ("," + instrument + ",") in x or x.startswith(instrument + ",") or x.endswith("," + instrument):
+                return MidiTranslationManager.channel10[x]
+        return "piano"
+
     def get_instrument(instrument):
         instrument = str(instrument)
         for x in MidiTranslationManager.midi:
@@ -138,7 +210,7 @@ class MidiTranslationManager:
         return "piano"
 
     def get_block(instrument):
-        return MidiTranslationManager.blocks[MidiTranslationManager.get_instrument(instrument)]
+        return MidiTranslationManager.blocks[instrument]
 
 
     def note_block_pitch(midipitch):
@@ -155,6 +227,7 @@ class NoteBlockMessage:
         self.note = note
         self.leading_delay = leading_delay
         self.delay = delay
+        self.is_percussion = False
 
 
 class NoteBlockConverter:
@@ -163,6 +236,7 @@ class NoteBlockConverter:
         self.midi_messages = []
         self.noteblock = []
         self.tempo_modifier = 1.0
+        self.channel10 = True
 
     def extract_messages(self):
         for message in self.midi:
@@ -177,9 +251,12 @@ class NoteBlockConverter:
                 continue
             if message.type == "program_change":
                 channel_instrument[message.channel] = message.program
-            if message.type in ["note_on", "note_off"]:
+            if message.type in ["note_on", "note_off"]:  
                 instrument = channel_instrument[message.channel] if message.channel in channel_instrument else 0
-                output.append(NoteBlockMessage(message.note if message.type == "note_on" else None, instrument, total_delay, message.time))
+                nbm = NoteBlockMessage(message.note if message.type == "note_on" else None, instrument, total_delay, message.time)
+                if message.channel == 9 and self.channel10:
+                    nbm.is_percussion = True
+                output.append(nbm)
             try:
                 total_delay += message.time / self.tempo_modifier
             except:
@@ -222,6 +299,10 @@ class NoteBlockStructureGenerator:
         self.structures = []
         self.command_delay = 0.0
         self.server_instance = None
+        self.line1 = "black_wool"
+        self.line2 = "black_wool"
+        self.studs = ["red_wool", "orange_wool", "yellow_wool", "lime_wool", "light_blue_wool", "cyan_wool", "blue_wool", "purple_wool", "magenta_wool"]
+        
         self.facing = {
             0: "south",
             1: "west",
@@ -230,7 +311,7 @@ class NoteBlockStructureGenerator:
         }
 
     def generate(self):
-        biggest_frame = max([len(x) for x in self.messages])
+        biggest_frame = max([len([y for y in x if y.note != None]) for x in self.messages])
         lanes = [NoteBlockLane() for x in range(0, math.ceil(biggest_frame / 3))]
         time = -0.1
         current_items = [item for sublist in self.messages.copy() for item in sublist]
@@ -263,16 +344,27 @@ class NoteBlockStructureGenerator:
         time.sleep(self.command_delay)
             
     def build(self, server_instance, x_pos, y_pos, z_pos, direction):
+        print('direction is ' + str(direction))
         self.server_instance = server_instance
         forward_x = 0 if direction % 2 == 0 else direction - 2
         forward_z = 0 if direction % 2 != 0 else 2 - direction - 1
-        sideways_x = 0 - forward_z
-        sideways_z = 0 - forward_x
-        
+        sideways_x = 0 - forward_z if direction % 2 == 0 else forward_z
+        sideways_z = 0 - forward_x if direction % 2 == 0 else forward_x
+
+        border_x = x_pos
+        border_z = z_pos
+        x_pos += sideways_x * 2
+        z_pos += sideways_z * 2
         max_entries = max([len(x.objects) for x in self.structures])
         for x in range(0, max_entries):
+            current_border_x = border_x + forward_x * x
+            current_border_z = border_z + forward_z * x
             current_x = x_pos + forward_x * x
             current_z = z_pos + forward_z * x
+            self.place_block(current_border_x, y_pos + 2, current_border_z, self.line1)
+            self.place_block(current_border_x + sideways_x * len(self.structures) * 3 + sideways_x, y_pos + 2, current_border_z + sideways_z * len(self.structures) * 3 + sideways_z, self.line2)
+            self.place_block(current_border_x, y_pos + 1, current_border_z, self.line1)
+            self.place_block(current_border_x + sideways_x * len(self.structures) * 3 + sideways_x, y_pos + 1, current_border_z + sideways_z * len(self.structures) * 3 + sideways_z, self.line2)
             for y in range(0, len(self.structures)):
                 lane = self.structures[y]
                 lane_x = current_x + sideways_x * 3 * y
@@ -283,7 +375,7 @@ class NoteBlockStructureGenerator:
                         self.place_block(lane_x, y_pos + 1, lane_z, "iron_block")
                         self.place_block(lane_x, y_pos + 2, lane_z, "repeater[facing=%s,delay=%s]" % (self.facing[direction], item[1]))
                     if (item[0] == "stud"):
-                        self.place_block(lane_x, y_pos + 2, lane_z, "iron_block")
+                        self.place_block(lane_x, y_pos + 2, lane_z, self.studs[(math.floor(x / 2) + y) % len(self.studs)])
                     if (item[0] == "blocks"):
                         start_x = lane_x
                         start_z = lane_z
@@ -291,12 +383,13 @@ class NoteBlockStructureGenerator:
                             start_x = start_x + sideways_x * -1
                             start_z = start_z + sideways_z * -1
                         for z in item[1]:
-                            pitch = MidiTranslationManager.note_block_pitch(z.note)
-                            material = MidiTranslationManager.get_block(z.instrument)
+                            inst = MidiTranslationManager.get_instrument(z.instrument) if not z.is_percussion else MidiTranslationManager.get_percussion(z.note)
+                            note = z.note if not z.is_percussion else 48
+                            pitch = MidiTranslationManager.note_block_pitch(note)
+                            material = MidiTranslationManager.get_block(inst)
                             if material in ["sand", "gravel"]:
                                 self.place_block(start_x, y_pos, start_z, "iron_block")
                             self.place_block(start_x, y_pos + 1, start_z, material)
-                            inst = MidiTranslationManager.get_instrument(z.instrument)
                             self.place_block(start_x, y_pos + 2, start_z, "note_block[note=" + str(pitch) + ("," + "instrument=" + inst if inst != "piano" else "") + "]")
                             start_x = start_x + sideways_x 
                             start_z = start_z + sideways_z
@@ -350,12 +443,15 @@ class MinecraftServerWrapper:
         self.server_process.stdin.writelines([text.encode() + b'\r'])
         self.server_process.stdin.flush()
 
-    def get_log_output(self, text, level=True):
-        return text[(11 if level else 33):].strip('\n').replace('\r', '')
+    def get_log_output(self, text):
+        t = text.split(']', 1)
+        if len(t) < 2:
+            return text
+        return t[-1][2:].strip('\n').replace('\r', '')
         
     def on_server_log(self, text):
         self.log_event(self, text)
-        compare_text = self.get_log_output(text.decode(), False)
+        compare_text = self.get_log_output(text.decode())
         if compare_text.startswith('Done (') and compare_text.endswith(')! For help, type "help"'):
             propreties = open(self.path_manager.get_path("$server.properties"), "r")
             is_flat = True in [False if (x.startswith('#') or x.strip() == "") else (False if x.split('=', 1)[0] != "level-type" else (False if x.split('=', 1)[1].lower() == "flat" else True)) for x in propreties.readlines()]
@@ -410,6 +506,7 @@ class NoteblockerCI:
         self.repeaterfix = True
         self.pythonw = "pythonw" in os.path.split(sys.executable)[1]
         self.tempo_modifier = 1.0
+        self.channel10 = True
         self.facing_repeaterfix = {
             0: "north",
             1: "east",
@@ -534,7 +631,7 @@ class NoteblockerCI:
                     break
                 print('input a direction (north/south/east/west)')
                 direction = input('> ').strip().lower()
-            direction = {'south': 0, 'east': 1, 'north': 2, 'west': 3}[direction]
+            direction = {'south': 0, 'west': 1, 'north': 2, 'east': 3}[direction]
             print('reading file..')
             c = NoteBlockConverter(midipath)
             c.tempo_modifier = self.tempo_modifier
@@ -551,6 +648,15 @@ class NoteblockerCI:
             print('building blocks..')
             self.minecraft_server.logging_disabled = True
             try:
+                g.server_instance = self.minecraft_server
+                g.place_block(x, y + 3, z, "lapis_block")
+                rotation = (direction + 2) % 4 * 4
+                filename = os.path.split(midipath)[1]
+                filename_chunked = [filename[x:x+14] for x in range(0, len(filename), 14)]
+                while len(filename_chunked) < 4:
+                    filename_chunked.append("")
+                filename_chunked = filename_chunked[0:5]
+                g.place_block(x, y + 4, z,r"""minecraft:sign[rotation=%s]{Text1:"{\"text\":\"%s\",\"color\":\"blue\"}",Text2:"{\"text\":\"%s\",\"color\":\"blue\"}",Text3:"{\"text\":\"%s\",\"color\":\"blue\"}",Text4:"{\"text\":\"%s\",\"color\":\"blue\"}"}""" % tuple([rotation] + filename_chunked))
                 g.build(self.minecraft_server, x, y, z, direction)
             except BaseException as e:
                 time.sleep(2)
